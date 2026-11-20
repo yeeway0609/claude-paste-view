@@ -7,7 +7,8 @@ import type { TextTag } from './tags'
 import { drawsImages, pngDimensions, thumbnailBoxes } from './thumbnails'
 import type { Dimensions } from './thumbnails'
 
-const PANE = 'paste-view'
+// The box a pasted text opens in, above the lines.
+const TEXT_BOX = 'text-box'
 // A paste raises no prompt.edit, and a collapsed text paste reaches no hook before it is
 // sent: the draft is watched on a timer, and a new text tag is matched against the
 // clipboard the moment it appears.
@@ -39,6 +40,8 @@ let lastSignature: string | undefined
 // What was last written to state, so a refresh that finds the same pastes doesn't redraw.
 let written: string | undefined
 let isRefreshing = false
+// Set when a text opens: the next poll, the box drawn by then, scrolls it into view.
+let isRevealing = false
 
 async function tmpRoot($: EngineInterface): Promise<string> {
   const configured = await $.env.get('CLAUDE_CODE_TMPDIR')
@@ -160,7 +163,7 @@ async function refresh($: EngineInterface, draft: string) {
   }
 
   const shown = await read($, viewing)
-  if (shown !== null && !tags.texts.some(tag => tag.n === shown)) await closePane($)
+  if (shown !== null && !tags.texts.some(tag => tag.n === shown)) await update($, viewing, () => null)
 }
 
 async function poll($: EngineInterface) {
@@ -168,7 +171,10 @@ async function poll($: EngineInterface) {
   isRefreshing = true
   try {
     await refresh($, (await $.prompt.read()).text)
-  } finally {
+    if (isRevealing) {
+      isRevealing = false
+      await $.ui.scroll({ to: { key: TEXT_BOX }, block: 'start' }).catch(() => undefined)
+    }  } finally {
     isRefreshing = false
   }
 }
@@ -180,14 +186,18 @@ async function openImage($: EngineInterface, path: string) {
   if (ran?.exitCode !== 0) $.ui.toast(`paste-view: couldn't open the image with ${viewerCommand}`)
 }
 
-async function openPane($: EngineInterface, paste: PastedText) {
-  await update($, viewing, () => paste.n)
-  await $.ui.open({ id: PANE, title: `Pasted text #${paste.n}`, focus: true, closeOnEscape: true })
+// A text opens in the band, not a pane: a pane docks beside a wide fullscreen transcript.
+// Pressing its line again closes it.
+async function toggleText($: EngineInterface, n: number) {
+  const shown = await read($, viewing)
+  await update($, viewing, () => (shown === n ? null : n))
+  isRevealing = shown !== n
 }
 
-async function closePane($: EngineInterface) {
-  await update($, viewing, () => null)
-  if ((await $.ui.panes()).some(pane => pane.id === PANE)) await $.ui.close({ id: PANE })
+// An open text closes when the person types in the prompt. Esc can't close it: the band
+// never sees that key.
+async function closeText($: EngineInterface) {
+  if ((await read($, viewing)) !== null) await update($, viewing, () => null)
 }
 
 /** Lines a paste spans on screen, a trailing newline not counted. */
@@ -216,8 +226,8 @@ export const register: Register = on => {
     return next(e)
   })
 
-  on('ui.close', { id: PANE }, async ($, e, next) => {
-    await update($, viewing, () => null)
+  on('prompt.edit', async ($, e, next) => {
+    await closeText($)
     return next(e)
   })
 
@@ -238,10 +248,27 @@ export const register: Register = on => {
     const boxes = thumbnailBoxes(pictures.map(image => image.size), e.props.maxRows - lineRows, width)
     // Number keys run down the lines that open something, images first.
     const hotkey = (i: number) => (i >= 0 && i < 9 ? { hotkey: String(i + 1) } : {})
+    const viewingN = await read($, viewing)
+    const shown = textList.find(paste => paste.n === viewingN)
+    const shownText = shown?.text ?? null
     const below = await next(e)
 
     return (
       <Box flexDirection="column">
+        {shown !== undefined && shownText !== null && (
+          <Box key={TEXT_BOX} flexDirection="column">
+            <Box flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
+              <Text dimColor wrap="truncate">
+                {`${shownLines(shown)} lines · ${charCount(shownText.length)} · ↑↓ scroll`}
+              </Text>
+              <Text>{shownText}</Text>
+            </Box>
+            {/* The close mark sits on the frame's top edge: ──x──╮ */}
+            <Box position="absolute" top={0} right={3}>
+              <Button key="text-close" plain label="x" onPress={() => toggleText($, shown.n)} />
+            </Box>
+          </Box>
+        )}
         {pictures.length > 0 && (
           <Box flexDirection="row" columnGap={1} alignItems="flex-end">
             {pictures.map((image, i) => (
@@ -291,30 +318,14 @@ export const register: Register = on => {
               plain
               {...hotkey(openable.length + i)}
               label={`${label}${firstLine(paste.text, width - label.length - 3)}`}
-              onPress={() => openPane($, paste)}
+              onPress={() => toggleText($, paste.n)}
             />
           )
         })}
         {(openable.length > 0 || textList.some(paste => paste.text !== null)) && (
-          <Text dimColor wrap="truncate">click a line, or ctrl+x tab then its number, to see it whole</Text>
+          <Text dimColor wrap="truncate">click a line, or ctrl+x tab then its number, to see it whole or hide it</Text>
         )}
         {below}
-      </Box>
-    )
-  })
-
-  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text } = $.ui.resolve(e)
-    const shown = await read($, viewing)
-    const paste = (await read($, texts)).find(one => one.n === shown)
-    if (paste?.text == null) return <Text dimColor>This paste is no longer in the prompt.</Text>
-
-    return (
-      <Box flexDirection="column">
-        <Text dimColor wrap="truncate">
-          {`${shownLines(paste)} lines · ${charCount(paste.text.length)} · ↑↓ scroll · esc close`}
-        </Text>
-        <Text>{paste.text}</Text>
       </Box>
     )
   })

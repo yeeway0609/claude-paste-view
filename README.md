@@ -46,7 +46,7 @@ click a paste, or ctrl+x tab then its number, to read it whole
 
 - **Images** show as thumbnails that keep their shape and shrink to fit the space above the prompt. In a terminal that can't draw pictures (Terminal.app, …), or that Claude Code doesn't recognise as one (iTerm2, see [Limitations](#limitations)), each image is a line instead, `#1 · image 1630×632 — open`, that opens it in your system's image viewer. The terminal draws only PNG files, so on macOS a pasted JPEG, WebP or other non-PNG image is converted once to a PNG thumbnail with `sips`. On Linux, or when `sips` can't read it, it is a line instead, `#1 · image · jpg — open`.
 - **Long text** shows as one line: its line count, its size and its first line.
-- **See a paste whole** by clicking its line, or with ctrl+x tab then its number. Text opens in a pane (↑↓ to scroll, Esc to close); an image opens in your system's viewer. Your draft is left as it is.
+- **See a paste whole** by clicking its line, or with ctrl+x tab then its number. Text opens whole in a box above the lines, at any window width (scroll with the wheel, or ↑↓ once the band is focused; click its line again or the x on its frame to close it; it also closes when you type in the prompt, but not on Esc, which Claude Code keeps for itself); an image opens in your system's viewer. Your draft is left as it is.
 - **Clears on send.** Once the prompt is sent, or a tag is deleted, its preview goes away.
 
 ![A pasted text opened whole in a pane, with its line and character counts](docs/pane.png)
