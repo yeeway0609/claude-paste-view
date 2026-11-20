@@ -2,7 +2,9 @@ export type PastedImage = {
   n: number
   /** Where Claude Code cached the image; null until its file is found. */
   path: string | null
-  /** Its size in pixels, from the PNG header; null when that couldn't be read. */
+  /** The PNG the thumbnail draws: the paste itself, or its sips copy; null when there is none. */
+  thumbnail: string | null
+  /** The thumbnail's size in pixels, from the PNG header; null when that couldn't be read. */
   size: { width: number; height: number } | null
 }
 

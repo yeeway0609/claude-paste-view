@@ -44,7 +44,7 @@ click a paste, or ctrl+x tab then its number, to read it whole
 ❯ why does this fail [Image #1] [Pasted text #2 +41 lines]
 ```
 
-- **Images** show as thumbnails that keep their shape and shrink to fit the space above the prompt. In a terminal that can't draw pictures (Terminal.app, …), or that Claude Code doesn't recognise as one (iTerm2, see [Limitations](#limitations)), each image is a line instead, `#1 · image 1630×632 — open`, that opens it in your system's image viewer. A pasted JPEG, WebP or other non-PNG image is always a line, `#1 · image · jpg — open`, since the terminal draws only PNG files.
+- **Images** show as thumbnails that keep their shape and shrink to fit the space above the prompt. In a terminal that can't draw pictures (Terminal.app, …), or that Claude Code doesn't recognise as one (iTerm2, see [Limitations](#limitations)), each image is a line instead, `#1 · image 1630×632 — open`, that opens it in your system's image viewer. The terminal draws only PNG files, so on macOS a pasted JPEG, WebP or other non-PNG image is converted once to a PNG thumbnail with `sips`. On Linux, or when `sips` can't read it, it is a line instead, `#1 · image · jpg — open`.
 - **Long text** shows as one line: its line count, its size and its first line.
 - **See a paste whole** by clicking its line, or with ctrl+x tab then its number. Text opens in a pane (↑↓ to scroll, Esc to close); an image opens in your system's viewer. Your draft is left as it is.
 - **Clears on send.** Once the prompt is sent, or a tag is deleted, its preview goes away.
@@ -54,7 +54,7 @@ click a paste, or ctrl+x tab then its number, to read it whole
 ## How It Works
 
 1. Every 200ms the mod reads the prompt box and looks for `[Image #n]` and `[Pasted text #n …]` tags. It polls because pasting raises no edit event.
-2. **Images:** Claude Code caches each pasted image as `<tmp>/<project>/<session>/images/<n>.png`, or `<n>.jpg`, `<n>.webp`, … when it was pasted in another format. The mod finds that file and draws a PNG with Claude Code's `Image` element.
+2. **Images:** Claude Code caches each pasted image as `<tmp>/<project>/<session>/images/<n>.png`, or `<n>.jpg`, `<n>.webp`, … when it was pasted in another format. The mod finds that file and draws it with Claude Code's `Image` element. That element draws PNG only, so on macOS any other format is converted once with `sips` to `<tmp>/<project>/<session>/paste-view-<n>.png`, at most 800 pixels on its longer side, and that copy is drawn instead.
 3. **Text:** Claude Code keeps a collapsed paste to itself until the prompt is sent, and writes no file for it before then. So when a new text tag appears, the mod reads the clipboard once (`pbpaste` on macOS, `wl-paste` or `xclip` on Linux). It keeps that text only if its line count matches the count in the tag, and holds it in memory until the tag leaves the prompt.
 
 ## Limitations
@@ -67,7 +67,7 @@ click a paste, or ctrl+x tab then its number, to read it whole
 
 ## Security
 
-Everything stays on your machine: the mod never touches the network and never writes to disk. It reads the prompt box, lists Claude Code's temp folder to find the session's image cache and the pasted images in it, reads the first bytes of each pasted image, and reads the clipboard once per text paste. It reads `TERM`, `TERM_PROGRAM`, `KITTY_WINDOW_ID`, `TMUX`, `STY`, `CLAUDE_CODE_SESSION_KIND` and `CLAUDE_CODE_FORCE_TERMINAL_IMAGES` to know whether the terminal draws pictures. It runs `id -u` once if `CLAUDE_CODE_TMPDIR` isn't set, the clipboard tool for each text paste, and `uname` then `open` or `xdg-open` when you ask to open an image. Pasted text is kept in memory only, and dropped once its tag leaves the prompt.
+Everything stays on your machine: the mod never touches the network, and the only file it writes is the PNG copy of a non-PNG pasted image, in Claude Code's temp folder for the session. It reads the prompt box, lists Claude Code's temp folder to find the session's image cache and the pasted images in it, reads the first bytes of each pasted image, and reads the clipboard once per text paste. It reads `TERM`, `TERM_PROGRAM`, `KITTY_WINDOW_ID`, `TMUX`, `STY`, `CLAUDE_CODE_SESSION_KIND` and `CLAUDE_CODE_FORCE_TERMINAL_IMAGES` to know whether the terminal draws pictures. It runs `id -u` once if `CLAUDE_CODE_TMPDIR` isn't set, the clipboard tool for each text paste, `sips` once per non-PNG pasted image where the terminal draws pictures, and `uname` then `open` or `xdg-open` when you ask to open an image. Pasted text is kept in memory only, and dropped once its tag leaves the prompt.
 
 Run `claude plugin validate .claude-plugin/plugin.json` on the repo to see every event it hooks and every call it makes.
 

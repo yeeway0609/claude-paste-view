@@ -30,6 +30,8 @@ let clipboardCommand: readonly string[] | null | undefined
 let viewerCommand: string | undefined
 let imagesDir: { session: string; path: string } | undefined
 const dimensions = new Map<string, Dimensions | null>()
+// Pastes sips couldn't convert, not tried again.
+const unconvertible = new Set<string>()
 // Pasted texts by tag number, each read once, when its tag first shows up.
 const pastes = new Map<number, string | null>()
 // What the draft held at the last refresh; undefined forces the next one to redo the work.
@@ -79,16 +81,37 @@ async function findImage($: EngineInterface, dir: string, n: number): Promise<st
 
 const isPng = (path: string) => path.endsWith('.png')
 
+// Image draws PNG only: any other paste is converted once with sips (macOS) to
+// <session>/paste-view-<n>.png. Without sips, or when it fails, the paste stays a line.
+async function thumbnailFor($: EngineInterface, dir: string, path: string, n: number): Promise<string | null> {
+  if (isPng(path)) return path
+  if (!hasGraphics || unconvertible.has(path)) return null
+  const out = `${dir.replace(/\/images$/, '')}/paste-view-${n}.png`
+  // A copy older than the paste belongs to an earlier paste with the same number.
+  const [source, copy] = await Promise.all([$.fs.stat(path), $.fs.stat(out)].map(stat => stat.catch(() => undefined)))
+  if (source !== undefined && copy?.kind === 'file' && copy.mtimeMs >= source.mtimeMs) return out
+  const ran = await $.process
+    .run(['sips', '-s', 'format', 'png', '-Z', '800', path, '--out', out], { timeoutMs: 10_000 })
+    .catch(() => undefined)
+  if (ran?.exitCode !== 0) {
+    unconvertible.add(path)
+    return null
+  }
+  dimensions.delete(out)
+  return out
+}
+
 async function describeImage($: EngineInterface, dir: string | undefined, n: number): Promise<PastedImage> {
   const path = dir === undefined ? undefined : await findImage($, dir, n)
-  if (path === undefined) return { n, path: null, size: null }
-  if (!isPng(path)) return { n, path, size: null }
-  if (!dimensions.has(path)) {
+  if (dir === undefined || path === undefined) return { n, path: null, thumbnail: null, size: null }
+  const thumbnail = await thumbnailFor($, dir, path, n)
+  if (thumbnail === null) return { n, path, thumbnail, size: null }
+  if (!dimensions.has(thumbnail)) {
     // A file past the read cap is still drawn, in a default shape.
-    const head = await $.fs.read(path, { as: 'bytes' }).catch(() => undefined)
-    dimensions.set(path, head === undefined ? null : pngDimensions(head.base64))
+    const head = await $.fs.read(thumbnail, { as: 'bytes' }).catch(() => undefined)
+    dimensions.set(thumbnail, head === undefined ? null : pngDimensions(head.base64))
   }
-  return { n, path, size: dimensions.get(path) ?? null }
+  return { n, path, thumbnail, size: dimensions.get(thumbnail) ?? null }
 }
 
 async function readClipboard($: EngineInterface): Promise<string | null> {
@@ -206,8 +229,8 @@ export const register: Register = on => {
 
     const { Box, Button, Image, Text } = $.ui.resolve(e)
     const width = e.props.bodyColumns
-    // The Image element draws a PNG file only: any other format is a line that opens it.
-    const pictures = hasGraphics ? imageList.filter(image => image.path !== null && isPng(image.path)) : []
+    // No thumbnail: a line that opens it. `!= null` also covers state from before a reload.
+    const pictures = hasGraphics ? imageList.filter(image => image.thumbnail != null) : []
     const imageLines = imageList.filter(image => !pictures.includes(image))
     const openable = imageLines.filter(image => image.path !== null)
     // One row per line below the thumbnails, plus the hint; the thumbnails get the rest.
@@ -226,7 +249,7 @@ export const register: Register = on => {
                 <Box borderStyle="round" borderDimColor>
                   <Image
                     key={`picture-${image.n}`}
-                    source={{ file: image.path ?? '', format: 'png' }}
+                    source={{ file: image.thumbnail ?? '', format: 'png' }}
                     columns={boxes[i]?.columns ?? 4}
                     rows={boxes[i]?.rows ?? 1}
                     alt={`[Image #${image.n}]`}

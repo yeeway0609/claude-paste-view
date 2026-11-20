@@ -249,7 +249,7 @@ for (const [terminal, env] of [
   ['Ghostty', { TERM_PROGRAM: 'ghostty' }],
   ['Orca', { TERM_PROGRAM: 'Orca' }],
 ] as const) {
-  test(`a pasted JPEG in ${terminal} shows as a line that opens it`, async ($, on) => {
+  test(`a pasted JPEG sips can't convert in ${terminal} shows as a line that opens it`, async ($, on) => {
     const { clock, state } = harness(on, env)
     state.images = ['1.jpg', '12.png']
     await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' })
@@ -257,7 +257,7 @@ for (const [terminal, env] of [
     state.draft = 'see [Image #1]'
     await clock.advance(200)
 
-    // The Image element only draws a PNG file, so no thumbnail, even where pictures show.
+    // No converted copy, so no thumbnail, even where pictures show.
     const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
     expect(await band.find({ type: 'Image' })).toBeUndefined()
     expect(await band.find({ type: 'Button', key: 'image-1', text: '#1 · image · jpg — open' })).toBeDefined()
