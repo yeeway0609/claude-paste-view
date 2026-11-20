@@ -21,7 +21,7 @@ declare module 'claude-code' {
     'paste-view': {
       images: PastedImage[]
       texts: PastedText[]
-      /** The pasted text shown in the pane, by tag number; null while it is closed. */
+      /** The pasted text shown whole above the prompt, by tag number; null while none is. */
       viewing: number | null
     }
   }

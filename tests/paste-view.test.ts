@@ -62,14 +62,6 @@ const BAND = {
   props: { hasSurvey: false, isWorking: false, maxRows: 20, bodyColumns: 120, scroll: { offset: 0, bodyRows: 20 }, view: {} },
 } as const
 
-const PANE = {
-  plugin: 'paste-view',
-  component: 'Pane',
-  requestId: 'paste-view',
-  viewport: { columns: 120, rows: 40 },
-  props: { title: 'Pasted text #2', isFocused: true, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 30 }, view: {} },
-} as const
-
 /** The first bytes of a PNG of the given size, base64-encoded: signature, IHDR length and tag, width, height. */
 function pngStart(width: number, height: number): string {
   const be32 = (value: number) => [value >>> 24, (value >>> 16) & 0xff, (value >>> 8) & 0xff, value & 0xff]
@@ -149,7 +141,7 @@ function harness(on: On, env: Record<string, string> = {}) {
   return { clock, state }
 }
 
-test('a pasted text shows a preview, opens whole in a pane, and clears on send', async ($, on) => {
+test('a pasted text shows a preview, opens whole above the prompt, and clears on send', async ($, on) => {
   const { clock, state } = harness(on)
   await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' })
 
@@ -161,16 +153,22 @@ test('a pasted text shows a preview, opens whole in a pane, and clears on send',
   expect(await band.find({ type: 'Button', key: 'text-2', text: '#2 · 3 lines · 79 chars — Lorem ipsum dolor sit amet,' })).toBeDefined()
   await $.ui.press({ plugin: 'paste-view', key: 'text-2' })
   await band.unmount()
-  expect(state.opened).toEqual(['paste-view'])
 
-  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect(await pane.find({ type: 'Text', text: 'sed do eiusmod tempor.' })).toBeDefined()
-  await pane.unmount()
+  // It opens in the band itself, never a pane, so it can't dock beside the transcript.
+  expect(state.opened).toEqual([])
+  const open = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await open.find({ type: 'Text', text: 'sed do eiusmod tempor.' })).toBeDefined()
 
-  // Sending the prompt empties the box: the row goes and the pane closes.
+  // Pressing its line again closes it.
+  await $.ui.press({ plugin: 'paste-view', key: 'text-2' })
+  await open.unmount()
+  const closed = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await closed.find({ type: 'Text', text: 'sed do eiusmod tempor.' })).toBeUndefined()
+  await closed.unmount()
+
+  // Sending the prompt empties the box: the row goes.
   state.draft = ''
   await clock.advance(200)
-  expect(state.closed).toEqual(['paste-view'])
   const after = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect(await after.find({ type: 'Button' })).toBeUndefined()
   expect(await after.find({ type: 'Text', text: 'engine band' })).toBeDefined()
